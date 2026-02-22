@@ -1,0 +1,25 @@
+[project]
+name = "intershap"
+version = "0.1.0"
+description = "Official Python implementation of InterShap"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Laura Wenderoth", email = "laura.wenderoth18@email.com" }]
+
+dependencies = [
+    "datasets>=4.5.0",
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+    "numpy",
+    "scikit-learn",
+    "torch>=2.10.0",
+]
+
+[tool.setuptools]
+packages = ["intershap"]
+package-dir = { "" = "src" }
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
