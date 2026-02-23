@@ -3,6 +3,14 @@ from torch.utils.data import Dataset
 
 
 class IntershapDataset(Dataset):
+    """
+    IntershapDataset for multimodal data.
+
+    For test datasets, create with compute_mean_mask=False, then assign:
+        test_dataset.mask_mod = train_dataset.mask_mod
+    This ensures test data uses the mean mask from train data.
+    """
+
     def __init__(
         self,
         modalities,
@@ -43,9 +51,9 @@ class IntershapDataset(Dataset):
         )
 
         self.mask_mod = []
-
         if compute_mean_mask:
             self._compute_mean_masks()
+        # For test datasets, assign mask_mod from train after creation if needed.
 
     def __len__(self):
         return len(self.labels)
