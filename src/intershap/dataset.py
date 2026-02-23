@@ -11,6 +11,7 @@ class IntershapDataset(Dataset):
         transforms=None,
         fusion=None,
         compute_mean_mask=True,
+        feature_names=None,
     ):
         """
         modalities: list of lists (one list per modality)
@@ -27,6 +28,7 @@ class IntershapDataset(Dataset):
         self.modalities = modalities
         self.labels = labels
         self.n_modalities = len(modalities)
+        self.feature_names = feature_names
 
         if loaders is not None and len(loaders) != self.n_modalities:
             raise ValueError("Length of loaders must match number of modalities")
@@ -88,23 +90,22 @@ class IntershapDataset(Dataset):
                 self.mask_mod.append(None)
 
     def __getitem__(self, idx, mask=None):
+        """
+        mask: list/tuple of bools (len = n_modalities), True=keep, False=mask (replace with mean)
+        If mask is None, no masking is applied.
+        """
         samples = []
-
         for i in range(self.n_modalities):
             raw = self.modalities[i][idx]
             sample = self._load_modality(i, raw)
-
-            if mask and i in mask:
+            if mask is not None and not mask[i]:
+                # Replace with mean mask if available
                 if self.mask_mod[i] is not None:
                     sample = self.mask_mod[i]
-
             samples.append(sample)
-
         label = self.labels[idx]
-
         if self.fusion:
             samples = self._apply_fusion(samples, self.fusion)
-
         return samples, label
 
     def _apply_fusion(self, samples, fusion):
