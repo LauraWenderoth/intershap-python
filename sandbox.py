@@ -31,9 +31,14 @@ X1_train, X1_test, X2_train, X2_test, y_train, y_test = train_test_split(
 X_train = [X1_train, X2_train]
 X_test = [X1_test, X2_test]
 
+transform = lambda x: torch.tensor(x, dtype=torch.float32)
 # Create Dataset and DataLoader
-train_dataset = IntershapDataset(modalities=X_train, labels=y_train)
-test_dataset = IntershapDataset(modalities=X_test, labels=y_test)
+train_dataset = IntershapDataset(
+    modalities=X_train, labels=y_train, fusion="flat", transforms=[transform, transform]
+)
+test_dataset = IntershapDataset(
+    modalities=X_test, labels=y_test, fusion="flat", transforms=[transform, transform]
+)
 
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
@@ -82,6 +87,13 @@ print("Classification report:\n", classification_report(all_labels, all_preds))
 # %%
 
 
-dataset = IntershapDataset(modalities=[X1_train, X2_train], labels=y_train)
+dataset = IntershapDataset(
+    modalities=[X1_train, X2_train],
+    labels=y_train,
+    fusion="flat",
+    transforms=[transform, transform],
+)
 
+# %%
+mask = train_dataset.mask_mod
 # %%

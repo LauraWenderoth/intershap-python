@@ -51,8 +51,7 @@ class IntershapDataset(Dataset):
         )
 
         self.mask_mod = []
-        if compute_mean_mask:
-            self._compute_mean_masks()
+        # Mask calculation moved to Explainer class
         # For test datasets, assign mask_mod from train after creation if needed.
 
     def __len__(self):
@@ -70,32 +69,7 @@ class IntershapDataset(Dataset):
 
         return sample
 
-    def _compute_mean_masks(self):
-        """
-        Compute mean per modality over dataset.
-        Assumes modality can be converted to tensor.
-        """
-        for i in range(self.n_modalities):
-            values = []
-
-            for j in range(len(self)):
-                raw = self.modalities[i][j]
-                loaded = self._load_modality(i, raw)
-
-                if isinstance(loaded, torch.Tensor):
-                    values.append(loaded)
-                else:
-                    try:
-                        values.append(torch.tensor(loaded))
-                    except:
-                        continue
-
-            if len(values) > 0:
-                stacked = torch.stack(values)
-                mean_val = stacked.mean(dim=0)
-                self.mask_mod.append(mean_val)
-            else:
-                self.mask_mod.append(None)
+    # _compute_mean_masks moved to Explainer class
 
     def __getitem__(self, idx, mask=None):
         """

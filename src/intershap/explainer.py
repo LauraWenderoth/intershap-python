@@ -81,14 +81,47 @@ class Explainer:
         self.transforms = transforms
 
         self.X_train = self._check_and_convert_X_data(X_train)
+        self.n_modalities = len(self.X_train)
+        self._compute_mean_masks()
         self.train_dataset = IntershapDataset(
             self.X_train,
             labels=[0] * len(self.X_train[0]),
             fusion=fusion,
             transforms=transforms,
         )
-        self.n_modalities = len(self.X_train)
+        self.train_dataset.mask_mod = self.modality_masks
+        self.base_value = self._calculate_base_value()
         self.results = None
+
+    def _compute_mean_masks(self):
+        """
+        Compute mean per modality over training data.
+        Assumes modality can be converted to tensor.
+        """
+        mask_mod = []
+        for i in range(self.n_modalities):
+            values = []
+            for j in range(len(self.X_train[i])):
+                raw = self.X_train[i][j]
+                # If transforms are provided, apply them
+                if self.transforms and len(self.transforms) > i and self.transforms[i]:
+                    loaded = self.transforms[i](raw)
+                else:
+                    loaded = raw
+                if isinstance(loaded, torch.Tensor):
+                    values.append(loaded)
+                else:
+                    try:
+                        values.append(torch.tensor(loaded))
+                    except Exception:
+                        continue
+            if len(values) > 0:
+                stacked = torch.stack(values)
+                mean_val = stacked.mean(dim=0)
+                mask_mod.append(mean_val)
+            else:
+                mask_mod.append(None)
+        self.modality_masks = mask_mod
 
     def _check_and_convert_X_data(self, X):
         if not isinstance(X, list):
@@ -108,6 +141,18 @@ class Explainer:
                     X[i] = torch.tensor(x.values)
         return X
 
+    class MaskedDataset(Dataset):
+        def __init__(self, base_dataset, mask):
+            self.base_dataset = base_dataset
+            self.mask = mask
+
+        def __len__(self):
+            return len(self.base_dataset)
+
+        def __getitem__(self, idx):
+            x, y = self.base_dataset.__getitem__(idx, mask=self.mask)
+            return x, y
+
     def _make_test_dataset(self, X, y=None):
         if not isinstance(X, list):
             raise ValueError(
@@ -126,33 +171,43 @@ class Explainer:
         return dataset
 
     def get_all_combinations(self):
-        return list(product([True, False], repeat=self.n_modalities))
+        # Exclude the all-False (0000...) mask
+        combos = list(product([True, False], repeat=self.n_modalities))
+        return [c for c in combos if any(c)]
+
+    def _calculate_base_value(self):
+        # Use IntershapDataset to fuse mean masks, avoiding fusion logic duplication
+        masked_dataset = self.MaskedDataset(
+            self.train_dataset, mask=[False] * self.n_modalities
+        )
+        fused_sample, _ = masked_dataset[0]
+        base_value = self.model(fused_sample)
+        base_value = base_value.detach().cpu()
+        if base_value.dim() == 0:
+            base_value = base_value.unsqueeze(0).unsqueeze(1)
+        elif base_value.dim() == 1:
+            base_value = base_value.unsqueeze(1)
+        return base_value
 
     def explain(self, X_test, y_test=None):
         X_test = self._check_and_convert_X_data(X_test)
         test_dataset = self._make_test_dataset(X_test, y_test)
         results = {}
         for mask in self.get_all_combinations():
-
-            class MaskedDataset(Dataset):
-                def __init__(self, base_dataset, mask):
-                    self.base_dataset = base_dataset
-                    self.mask = mask
-
-                def __len__(self):
-                    return len(self.base_dataset)
-
-                def __getitem__(self, idx):
-                    x, y = self.base_dataset.__getitem__(idx, mask=self.mask)
-                    return x, y
-
-            masked_dataset = MaskedDataset(test_dataset, mask)
+            masked_dataset = self.MaskedDataset(test_dataset, mask)
             outputs = []
             for i in range(len(masked_dataset)):
                 x, _ = masked_dataset[i]
                 out = self.model(x)
                 outputs.append(out.detach().cpu())
             results[mask] = torch.stack(outputs, dim=0)
+
+        # Repeat base_value for each sample in test_dataset
+        # Ensure base_value has shape [1, 1] (or [1, n_classes]) before repeat
+
+        results["base_value"] = self.base_value.repeat(
+            len(test_dataset), *([1] * (self.base_value.dim() - 1))
+        )
         self.results = results
         return results
 
