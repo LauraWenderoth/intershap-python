@@ -74,14 +74,17 @@ class Explainer:
         transforms: list of transforms for each modality (optional)
         """
 
-        # Convert each modality in X_train to torch.tensor if it's a numpy array or pandas DataFrame/Series and no transform is provided for that modality
         self.model = self._auto_wrap_model(model)
-        self.feature_names = feature_names
         self.fusion = fusion
         self.transforms = transforms
-
         self.X_train = self._check_and_convert_X_data(X_train)
         self.n_modalities = len(self.X_train)
+        # Set feature names if not provided
+        if feature_names is not None:
+            self.feature_names = feature_names
+        else:
+            # Default: use string indices
+            self.feature_names = [str(i) for i in range(self.n_modalities)]
         self._compute_mean_masks()
         self.train_dataset = IntershapDataset(
             self.X_train,
@@ -91,7 +94,12 @@ class Explainer:
         )
         self.train_dataset.mask_mod = self.modality_masks
         self.base_value = self._calculate_base_value()
-        self.results = None
+        self.coalitions = {}
+
+    def _auto_wrap_model(self, model, class_index=None):
+        if isinstance(model, BaseEstimator):
+            return SklearnModelWrapper(model, class_index=class_index)
+        return model
 
     def _compute_mean_masks(self):
         """
@@ -205,16 +213,54 @@ class Explainer:
         # Repeat base_value for each sample in test_dataset
         # Ensure base_value has shape [1, 1] (or [1, n_classes]) before repeat
 
-        results["base_value"] = self.base_value.repeat(
+        results[tuple([False] * self.n_modalities)] = self.base_value.repeat(
             len(test_dataset), *([1] * (self.base_value.dim() - 1))
         )
-        self.results = results
-        return results
+        self.coalitions = results
+        self.shaply_values = self.calc_shaply_values()
+        self.interaction_values = None
+        return self.interaction_values
 
     def __call__(self, X_test, y_test=None):
         return self.explain(X_test, y_test)
 
-    def _auto_wrap_model(self, model, class_index=None):
-        if isinstance(model, BaseEstimator):
-            return SklearnModelWrapper(model, class_index=class_index)
-        return model
+    def calc_shaply_values(self):
+        """
+        Calculate Shapley values for each modality using:
+        phi_i = sum_{S subset N \ {i}} [|S|! * (M-|S|-1)! / M!] * (f(S ∪ {i}) - f(S))
+        Returns: dict mapping modality index to Shapley value tensor (shape: [n_samples, ...])
+        """
+        import itertools
+        import math
+
+        n = self.n_modalities
+        M = n
+        shap_values = {}
+        modalities = list(range(n))
+        # Get output shape from any coalition
+        sample_out = next(iter(self.coalitions.values()))
+        out_shape = sample_out.shape
+        # For each modality i
+        for i in modalities:
+            phi_i = torch.zeros(out_shape)
+            others = [m for m in modalities if m != i]
+            # For all subsets S of N \ {i}
+            for k in range(0, len(others) + 1):
+                for S in itertools.combinations(others, k):
+                    S_set = set(S)
+                    # Build mask for S
+                    mask_S = [m in S_set for m in modalities]
+                    # Build mask for S ∪ {i}
+                    mask_Si = mask_S.copy()
+                    mask_Si[i] = True
+                    # Factorial terms
+                    fact_S = math.factorial(len(S))
+                    fact_rest = math.factorial(M - len(S) - 1)
+                    denom = math.factorial(M)
+                    coeff = fact_S * fact_rest / denom
+                    # Evaluate f(S ∪ {i}) and f(S)
+                    out_Si = self.coalitions[tuple(mask_Si)]
+                    out_S = self.coalitions[tuple(mask_S)]
+                    phi_i += coeff * (out_Si - out_S)
+            shap_values[i] = phi_i
+        return shap_values

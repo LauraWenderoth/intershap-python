@@ -68,16 +68,16 @@ explainer = Explainer(
 )
 shap_values = explainer([X1_test, X2_test])
 
-if explainer.results is not None:
-    for mask, output in explainer.results.items():
+if explainer.coalitions is not None:
+    for mask, output in explainer.coalitions.items():
         print(f"Mask: {mask}, Output shape: {output.shape}")
 
 
-results = explainer.results.items()
+results = explainer.coalitions.items()
 # Convert results to DataFrame with mask columns and output values as rows
 results_dict = {str(mask): output.flatten().tolist() for mask, output in results}
 df_results = pd.DataFrame(results_dict)
-# %%
+
 
 # %%
 
@@ -86,5 +86,8 @@ df_results = pd.DataFrame(results_dict)
 # %%
 
 # %%
+
+# %%
+
 
 # %%
