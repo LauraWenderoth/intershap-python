@@ -191,10 +191,6 @@ class Explainer:
         fused_sample, _ = masked_dataset[0]
         base_value = self.model(fused_sample)
         base_value = base_value.detach().cpu()
-        if base_value.dim() == 0:
-            base_value = base_value.unsqueeze(0).unsqueeze(1)
-        elif base_value.dim() == 1:
-            base_value = base_value.unsqueeze(1)
         return base_value
 
     def explain(self, X_test, y_test=None):
@@ -211,11 +207,11 @@ class Explainer:
             results[mask] = torch.stack(outputs, dim=0)
 
         # Repeat base_value for each sample in test_dataset
-        # Ensure base_value has shape [1, 1] (or [1, n_classes]) before repeat
-
+        # Only repeat here, keep self.base_value as a single tensor
         results[tuple([False] * self.n_modalities)] = self.base_value.repeat(
-            len(test_dataset), *([1] * (self.base_value.dim() - 1))
+            len(test_dataset), 1
         )
+
         self.coalitions = results
         self.shaply_values = self.calc_shaply_values()
         self.interaction_values = None
@@ -264,3 +260,60 @@ class Explainer:
                     phi_i += coeff * (out_Si - out_S)
             shap_values[i] = phi_i
         return shap_values
+
+    def all_shapley_interaction_values(self):
+        """
+        Compute Shapley interaction values for all pairs of modalities.
+        Returns: dict with keys (A,B) and values as interaction tensors
+        """
+        n = self.n_modalities
+        interactions = {}
+        for i in range(n):
+            for j in range(i + 1, n):
+                interactions[(i, j)] = self.shapley_interaction_value(i, j)
+        return interactions
+
+    def shapley_interaction_value(self, A, B):
+        """
+        Calculate Shapley interaction value between modalities A and B:
+        phi_{A,B} = sum_{S subset N \ {A,B}} [|S|! * (M-|S|-2)! / (2*(M-1)!)] * (f(S ∪ {A,B}) + f(S) - f(S ∪ {A}) - f(S ∪ {B}))
+        Returns: tensor of shape [n_samples, ...]
+        """
+        import itertools
+        import math
+
+        n = self.n_modalities
+        M = n
+        modalities = list(range(n))
+        others = [m for m in modalities if m != A and m != B]
+        # Get output shape from any coalition
+        sample_out = next(iter(self.coalitions.values()))
+        out_shape = sample_out.shape
+        phi_AB = torch.zeros(out_shape)
+        for k in range(0, len(others) + 1):
+            for S in itertools.combinations(others, k):
+                S_set = set(S)
+                # S mask
+                mask_S = [m in S_set for m in modalities]
+                # S ∪ {A}
+                mask_SA = mask_S.copy()
+                mask_SA[A] = True
+                # S ∪ {B}
+                mask_SB = mask_S.copy()
+                mask_SB[B] = True
+                # S ∪ {A,B}
+                mask_SAB = mask_S.copy()
+                mask_SAB[A] = True
+                mask_SAB[B] = True
+                # Factorial terms
+                fact_S = math.factorial(len(S))
+                fact_rest = math.factorial(M - len(S) - 2)
+                denom = 2 * math.factorial(M - 1)
+                coeff = fact_S * fact_rest / denom
+                # Evaluate f(S ∪ {A,B}), f(S), f(S ∪ {A}), f(S ∪ {B})
+                out_SAB = self.coalitions[tuple(mask_SAB)]
+                out_S = self.coalitions[tuple(mask_S)]
+                out_SA = self.coalitions[tuple(mask_SA)]
+                out_SB = self.coalitions[tuple(mask_SB)]
+                phi_AB += coeff * (out_SAB + out_S - out_SA - out_SB)
+        return phi_AB
