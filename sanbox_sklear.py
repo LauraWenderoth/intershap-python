@@ -4,7 +4,7 @@ import sys
 sys.path.append("/Users/lwenderoth/Documents/intershap-python/src")
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
@@ -18,7 +18,7 @@ std = 0.8
 # Randomly sample two binary vectors of length N
 vec1 = np.random.randint(0, 2, N)
 vec2 = np.random.randint(0, 2, N)
-label = vec1 | vec2
+label = vec1 ^ vec2
 
 # For each entry, generate two d-dimensional vectors
 # The mean of each vector is either 0 or 1 depending on the sampled value
@@ -38,8 +38,9 @@ X_test = [X1_test, X2_test]
 X_train_flat = np.concatenate([X1_train, X2_train], axis=1)
 X_test_flat = np.concatenate([X1_test, X2_test], axis=1)
 
-# Train logistic regression
-model = LogisticRegression()
+
+# Train random forest classifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
 model.fit(X_train_flat, y_train)
 
 # Predict on test set
@@ -66,7 +67,7 @@ explainer = Explainer(
     [X1_train, X2_train],
     fusion="flat",
 )
-shap_values = explainer([X1_test, X2_test])
+interaction_values = explainer([X1_test, X2_test])
 
 if explainer.coalitions is not None:
     for mask, output in explainer.coalitions.items():
@@ -81,7 +82,7 @@ df_results = pd.DataFrame(results_dict)
 shap_values = explainer.calc_shapley_values()
 shap_interaction_values = explainer.all_shapley_interaction_values()
 
-shap_values = explainer([X1_test, X2_test])
+intershap = explainer.intershap()
 print("Shapley interaction values shape:", shap_interaction_values.shape)
 # %%
 

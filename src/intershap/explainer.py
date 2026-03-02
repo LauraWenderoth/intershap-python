@@ -208,7 +208,7 @@ class Explainer:
 
         # Repeat base_value for each sample in test_dataset
         results[tuple([False] * self.n_modalities)] = self.base_value.repeat(
-            len(test_dataset), 1
+            len(test_dataset), *([1] * self.base_value.ndim)
         )
 
         self.coalitions = results
@@ -346,3 +346,49 @@ class Explainer:
                 out_SB = self.coalitions[tuple(mask_SB)]
                 phi_AB += coeff * (out_SAB + out_S - out_SA - out_SB)
         return phi_AB
+
+    def intershap(self):
+        """
+        Compute the global InterShap value: the mean ratio of total absolute interaction contribution to total absolute contribution (interaction + individual), per sample.
+        Returns: float (global InterShap value)
+        """
+        if not hasattr(self, "interaction_values") or self.interaction_values is None:
+            raise ValueError("interaction_values not computed. Run explain() first.")
+
+        # Separate main effects (individual) and interactions
+        individual_keys = [
+            k for k in self.interaction_values.keys() if isinstance(k, int)
+        ]
+        interaction_keys = [
+            k
+            for k in self.interaction_values.keys()
+            if isinstance(k, tuple) and len(k) > 1
+        ]
+
+        # Sum absolute values per row
+        individual_sum = None
+        for k in individual_keys:
+            v = self.interaction_values[k]
+            abs_v = v.abs() if hasattr(v, "abs") else torch.abs(torch.tensor(v))
+            individual_sum = abs_v if individual_sum is None else individual_sum + abs_v
+
+        interaction_sum = None
+        for k in interaction_keys:
+            v = self.interaction_values[k]
+            abs_v = v.abs() if hasattr(v, "abs") else torch.abs(torch.tensor(v))
+            interaction_sum = (
+                abs_v if interaction_sum is None else interaction_sum + abs_v
+            )
+
+        # Avoid division by zero
+        # If either sum is None, set to zero tensor of the other's shape (or scalar 0 if both None)
+        if individual_sum is None or interaction_sum is None:
+            return -1
+
+        denom = interaction_sum + individual_sum
+        # Prevent division by zero
+        denom = torch.where(denom == 0, torch.ones_like(denom), denom)
+        ratio = interaction_sum / denom
+        # Mean over all samples and outputs
+        global_intershap = ratio.mean().item()
+        return round(global_intershap, 4)
