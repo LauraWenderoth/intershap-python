@@ -78,7 +78,11 @@ results = explainer.coalitions.items()
 results_dict = {str(mask): output.flatten().tolist() for mask, output in results}
 df_results = pd.DataFrame(results_dict)
 
+shap_values = explainer.calc_shapley_values()
+shap_interaction_values = explainer.all_shapley_interaction_values()
 
+shap_values = explainer([X1_test, X2_test])
+print("Shapley interaction values shape:", shap_interaction_values.shape)
 # %%
 
 # %%

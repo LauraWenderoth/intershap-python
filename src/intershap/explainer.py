@@ -207,20 +207,48 @@ class Explainer:
             results[mask] = torch.stack(outputs, dim=0)
 
         # Repeat base_value for each sample in test_dataset
-        # Only repeat here, keep self.base_value as a single tensor
         results[tuple([False] * self.n_modalities)] = self.base_value.repeat(
             len(test_dataset), 1
         )
 
         self.coalitions = results
-        self.shaply_values = self.calc_shaply_values()
-        self.interaction_values = None
+        self.shaply_values = self.calc_shapley_values()
+        pairwise_interactions = self.all_shapley_interaction_values()
+
+        # Calculate main effects (phi_{A,A}) and adjust Shapley values
+        main_effects = {}
+        adjusted_shapley = {}
+        for i in range(self.n_modalities):
+            phi_A = self.shaply_values[i]
+            phi_AA = phi_A.clone()
+            # Subtract all pairwise interactions for modality i
+            for j in range(self.n_modalities):
+                if i != j:
+                    key = (min(i, j), max(i, j))
+                    phi_AA -= pairwise_interactions.get(key, 0)
+            main_effects[i] = phi_AA
+            adjusted_shapley[i] = phi_AA
+
+        # Save all values in interaction_values dict
+        # Format: {i: main effect, (i,j): pairwise, (i,j,k): ...}
+        interaction_values = {}
+        # Main effects
+        for i in range(self.n_modalities):
+            interaction_values[i] = main_effects[i]
+        # Pairwise interactions
+        for key, value in pairwise_interactions.items():
+            interaction_values[key] = value
+
+        # Optionally, add higher-order interactions (not implemented yet)
+        # interaction_values[(i,j,k)] = ...
+
+        self.interaction_values = interaction_values
         return self.interaction_values
 
     def __call__(self, X_test, y_test=None):
         return self.explain(X_test, y_test)
 
-    def calc_shaply_values(self):
+    def calc_shapley_values(self):
         """
         Calculate Shapley values for each modality using:
         phi_i = sum_{S subset N \ {i}} [|S|! * (M-|S|-1)! / M!] * (f(S ∪ {i}) - f(S))
@@ -271,6 +299,7 @@ class Explainer:
         for i in range(n):
             for j in range(i + 1, n):
                 interactions[(i, j)] = self.shapley_interaction_value(i, j)
+
         return interactions
 
     def shapley_interaction_value(self, A, B):

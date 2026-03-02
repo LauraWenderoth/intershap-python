@@ -1,6 +1,6 @@
 # intershap
 
-Official Python implementation of InterShap.
+Official Python implementation of InterShap. Still work in progress. First releas planned for April 2026.
 
 ## Installation
 
@@ -32,11 +32,16 @@ Laura Wenderoth
 
 ###
 
-For modality i:
+The Shapley value of modality $A$ is defined as:
 
 $$
-\phi_i = \sum_{S \subseteq N \setminus {i}}
-\frac{|S|!(M-|S|-1)!}{M!} \big( f(S \cup {i}) - f(S) \big)
+\phi_A
+=
+\sum_{S \subseteq N \setminus \{A\}}
+\frac{|S|!(M-|S|-1)!}{M!}
+\left(
+f(S \cup \{A\}) - f(S)
+\right)
 $$
 
 The Shapley interaction value between modalities \(A\) and \(B\) is:
@@ -45,4 +50,24 @@ $$
 \phi_{A,B} = \sum_{S \subseteq N \setminus \{A,B\}}
 \frac{|S|!(M-|S|-2)!}{2(M-1)!}
 \Big( f(S \cup \{A,B\}) + f(S) - f(S \cup \{A\}) - f(S \cup \{B\}) \Big)
+$$
+
+The Shapley value of $A$ decomposes as:
+
+$$
+\phi_A
+=
+\phi_{A,A}
++
+\sum_{B \neq A} \phi_{A,B}
+$$
+
+Therefore, the main effect of $A$ is:
+
+$$
+\phi_{A,A}
+=
+\phi_A
+-
+\sum_{B \neq A} \phi_{A,B}
 $$
