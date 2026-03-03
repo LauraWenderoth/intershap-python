@@ -1,6 +1,9 @@
 # %%
 import sys
 
+import matplotlib.pyplot as plt
+import shap as shap
+
 sys.path.append("/Users/lwenderoth/Documents/intershap-python/src")
 import numpy as np
 import pandas as pd
@@ -76,14 +79,22 @@ if explainer.coalitions is not None:
 
 results = explainer.coalitions.items()
 # Convert results to DataFrame with mask columns and output values as rows
-results_dict = {str(mask): output.flatten().tolist() for mask, output in results}
+results_dict = {
+    str(mask): output.flatten().tolist() if hasattr(output, "flatten") else [output]
+    for mask, output in results
+}
 df_results = pd.DataFrame(results_dict)
 
-shap_values = explainer.calc_shapley_values()
-shap_interaction_values = explainer.all_shapley_interaction_values()
+shap_interaction_values = explainer.interaction_values
+# df_shap_interactions = pd.DataFrame(shap_interaction_values)
 
 intershap = explainer.intershap()
-print("Shapley interaction values shape:", shap_interaction_values.shape)
+base_value, shap_data, keys = explainer.shap_values_plot()
+shap_data = shap_data.mean(axis=0)
+
+
+shap.plots.force(base_value, shap_data, matplotlib=True, feature_names=keys)
+plt.show()
 # %%
 
 # %%

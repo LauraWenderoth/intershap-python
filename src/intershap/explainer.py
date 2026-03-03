@@ -392,3 +392,23 @@ class Explainer:
         # Mean over all samples and outputs
         global_intershap = ratio.mean().item()
         return round(global_intershap, 4)
+
+    def shap_values_plot(self):
+        # Flatten interaction_values dict into a 2D array (samples, n_effects)
+        # Use dict keys as feature names, and only take the first class (index 0) for each tensor
+        keys = list(self.interaction_values.keys())
+        arrays = []
+        for k in keys:
+            v = self.interaction_values[k]
+            arr = v.detach().cpu().numpy()
+            # If multi-class, take only the first class (axis=-1)
+            if arr.ndim > 1:
+                arr = arr[..., 0]
+            arrays.append(arr)
+        # Stack as columns: shape (n_samples, n_effects)
+        shap_data = np.column_stack(arrays)
+        base_value = self.base_value.detach().cpu().numpy()
+        if base_value.ndim > 1:
+            base_value = base_value[..., 0]
+        keys = [str(k) for k in keys]
+        return base_value, shap_data, keys
